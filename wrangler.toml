@@ -1,0 +1,6 @@
+name = "pia-und-olli"
+compatibility_date = "2025-04-01"
+
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "pia-olli"
