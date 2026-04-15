@@ -1,4 +1,4 @@
-import { AwsClient } from "aws4fetch";
+import { AwsClient } from "./_aws4fetch.js";
 
 export async function onRequestPost(context) {
   const { request, env } = context;
