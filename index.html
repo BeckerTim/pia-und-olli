@@ -608,29 +608,6 @@
     </div>
   </div>
 
-  <!-- ══════════════ PASSWORD ══════════════ -->
-  <div id="page-password" class="page page-center">
-    <div class="container">
-      <button class="back-btn" onclick="navigate('home')">
-        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-        Zur&uuml;ck
-      </button>
-
-      <h1 class="names names-sm">Pia <span class="amp">&</span> Olli</h1>
-      <p class="date date-sm">06. Juni 2026</p>
-      <div class="divider divider-sm"></div>
-
-      <h2 class="page-title">Fotos & Videos</h2>
-      <p class="page-subtitle">Bitte gebt das Passwort ein, das ihr mit der Einladung erhalten habt.</p>
-
-      <div class="pw-input-wrap">
-        <input type="text" class="pw-input" id="pwInput" placeholder="Passwort" autocomplete="off" onkeydown="if(event.key==='Enter') checkPassword()">
-        <button class="pw-btn" onclick="checkPassword()">OK</button>
-      </div>
-      <div class="pw-error" id="pwError"></div>
-    </div>
-  </div>
-
   <!-- ══════════════ UPLOAD ══════════════ -->
   <div id="page-upload" class="page page-scroll">
     <div class="container">
@@ -702,29 +679,10 @@
   </div>
 
   <script>
-    // ── Auth ──
-    function getAuth() { return localStorage.getItem('wedding_auth'); }
+    // ── Navigation zu Fotos ──
+    function navigatePhotos() { navigate('upload'); }
 
-    function navigatePhotos() {
-      if (getAuth()) { navigate('upload'); }
-      else { navigate('password'); document.getElementById('pwInput').focus(); }
-    }
-
-    function checkPassword() {
-      const input = document.getElementById('pwInput');
-      const error = document.getElementById('pwError');
-      if (input.value.trim().toLowerCase() === 'liebe') {
-        localStorage.setItem('wedding_auth', 'liebe');
-        error.textContent = '';
-        input.value = '';
-        navigate('upload');
-      } else {
-        error.textContent = 'Das Passwort ist leider falsch.';
-        input.select();
-      }
-    }
-
-    function authHeaders() { return { 'X-Auth': getAuth() || '' }; }
+    function authHeaders() { return {}; }
 
     // ── Navigation ──
     function navigate(page) {
@@ -796,7 +754,6 @@
           await new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             xhr.open('POST', '/api/upload');
-            xhr.setRequestHeader('X-Auth', getAuth() || '');
 
             xhr.upload.onprogress = (e) => {
               if (e.lengthComputable && bar) {
