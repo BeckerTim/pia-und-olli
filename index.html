@@ -774,35 +774,8 @@
             xhr.send(fd);
           });
         } else {
-          // Large files: presigned URL (direct to R2, up to 5GB)
-          const res = await fetch('/api/upload-url', {
-            method: 'POST',
-            headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filename: file.name, contentType: file.type }),
-          });
-          if (!res.ok) throw new Error('Konnte Upload-URL nicht erstellen');
-          const { url } = await res.json();
-
-          await new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.open('PUT', url);
-            xhr.setRequestHeader('Content-Type', file.type);
-
-            xhr.upload.onprogress = (e) => {
-              if (e.lengthComputable && bar) {
-                const pct = Math.round((e.loaded / e.total) * 100);
-                bar.style.width = pct + '%';
-                if (status) status.textContent = pct + '%';
-              }
-            };
-
-            xhr.onload = () => {
-              if (xhr.status >= 200 && xhr.status < 300) resolve();
-              else reject(new Error('Upload fehlgeschlagen: ' + xhr.status));
-            };
-            xhr.onerror = () => reject(new Error('Netzwerkfehler'));
-            xhr.send(file);
-          });
+          // Large files: multipart upload through the worker (R2 binding, no CORS/secrets needed)
+          await multipartUpload(file, bar, status);
         }
 
         if (bar) { bar.style.width = '100%'; bar.style.background = 'var(--success)'; }
@@ -813,6 +786,59 @@
         if (bar) { bar.style.width = '100%'; bar.style.background = 'var(--error)'; }
         if (status) { status.textContent = err.message; status.className = 'upload-status'; status.style.color = 'var(--error)'; }
       }
+    }
+
+    // R2 parts (except the last) must all be the same size; 50 MB keeps each
+    // request well under the worker body limit while staying above R2's 5 MB minimum.
+    const CHUNK_SIZE = 50 * 1024 * 1024;
+
+    async function multipartUpload(file, bar, status) {
+      const createRes = await fetch('/api/mpu-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: file.name, contentType: file.type || 'application/octet-stream' }),
+      });
+      if (!createRes.ok) throw new Error('Konnte Upload nicht starten');
+      const { key, uploadId } = await createRes.json();
+
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+      const parts = [];
+
+      for (let i = 0; i < totalChunks; i++) {
+        const partNumber = i + 1;
+        const start = i * CHUNK_SIZE;
+        const chunk = file.slice(start, Math.min(start + CHUNK_SIZE, file.size));
+
+        const part = await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', `/api/mpu-part?key=${encodeURIComponent(key)}&uploadId=${encodeURIComponent(uploadId)}&partNumber=${partNumber}`);
+
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable && bar) {
+              const loaded = start + e.loaded;
+              const pct = Math.min(100, Math.round((loaded / file.size) * 100));
+              bar.style.width = pct + '%';
+              if (status) status.textContent = pct + '%';
+            }
+          };
+
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText));
+            else reject(new Error('Upload fehlgeschlagen: ' + xhr.status));
+          };
+          xhr.onerror = () => reject(new Error('Netzwerkfehler'));
+          xhr.send(chunk);
+        });
+
+        parts.push({ partNumber: part.partNumber, etag: part.etag });
+      }
+
+      const completeRes = await fetch('/api/mpu-complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, uploadId, parts }),
+      });
+      if (!completeRes.ok) throw new Error('Konnte Upload nicht abschließen');
     }
 
     // ── Gallery ──
