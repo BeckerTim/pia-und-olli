@@ -953,7 +953,7 @@
         return `<div class="gallery-item ${video ? 'video' : ''}" onclick="${video ? `playVideo('${f.key}')` : `openLightbox(${i})`}">
           ${video
             ? `<div style="width:100%;height:100%;background:var(--dark);display:flex;align-items:center;justify-content:center;"><span style="color:var(--sage-light);font-size:0.7rem;">${sizeMB} MB</span></div>`
-            : `<img src="/api/files/${f.key}" loading="lazy" alt="">`}
+            : `<img src="/api/files/${f.key}?w=400" loading="lazy" decoding="async" alt="">`}
           <div class="overlay"><span class="overlay-text">${getDisplayName(f.key)}</span></div>
         </div>`;
       }).join('');
