@@ -534,6 +534,26 @@
       .gallery-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.5rem; }
 
     }
+
+    /* ── Update-Hinweis ── */
+    .update-banner {
+      position: fixed;
+      left: 50%;
+      bottom: 1rem;
+      transform: translate(-50%, 200%);
+      z-index: 9999;
+      background: var(--gold, #b89b5e);
+      color: #fff;
+      padding: 0.7rem 1.2rem;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.25);
+      cursor: pointer;
+      transition: transform 0.35s ease;
+      max-width: 90vw;
+      text-align: center;
+    }
+    .update-banner.show { transform: translate(-50%, 0); }
   </style>
 </head>
 <body>
@@ -995,6 +1015,41 @@
       const video = lb.querySelector('video');
       if (video) video.pause();
     }
+
+    // ── Auto-Update ──
+    // Erkennt einen neuen Deploy (geänderter ETag/Last-Modified von index.html)
+    // und blendet einen Hinweis zum Aktualisieren ein. Kein automatischer
+    // Reload, damit ein laufender Upload nicht unterbrochen wird.
+    (function () {
+      let knownVersion = null;
+
+      async function fetchVersion() {
+        try {
+          const res = await fetch('/', { method: 'HEAD', cache: 'no-cache' });
+          return res.headers.get('etag') || res.headers.get('last-modified');
+        } catch {
+          return null;
+        }
+      }
+
+      async function checkForUpdate() {
+        const v = await fetchVersion();
+        if (!v) return;
+        if (knownVersion === null) { knownVersion = v; return; }
+        if (v !== knownVersion) {
+          document.getElementById('updateBanner').classList.add('show');
+        }
+      }
+
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
+      window.addEventListener('focus', checkForUpdate);
+      setInterval(checkForUpdate, 5 * 60 * 1000); // alle 5 Minuten
+      checkForUpdate();
+    })();
   </script>
+
+  <div class="update-banner" id="updateBanner" onclick="location.reload()">
+    ✨ Neue Version verfügbar &middot; tippen zum Aktualisieren
+  </div>
 </body>
 </html>

@@ -1,0 +1,7 @@
+# HTML immer beim Server revalidieren, damit ein Reload stets den
+# neuesten Stand lädt. Bilder/Videos werden vom Worker selbst mit
+# langlebigem Cache ausgeliefert (siehe functions/api/files).
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
