@@ -788,9 +788,35 @@
       }
     }
 
-    // R2 parts (except the last) must all be the same size; 50 MB keeps each
-    // request well under the worker body limit while staying above R2's 5 MB minimum.
-    const CHUNK_SIZE = 50 * 1024 * 1024;
+    // R2 parts (except the last) must all be the same size and >= 5 MB.
+    // 10 MB keeps each request short and the worker's memory footprint low,
+    // which matters for multi-GB videos over flaky mobile connections.
+    const CHUNK_SIZE = 10 * 1024 * 1024;
+    const MAX_PART_RETRIES = 5;
+
+    function uploadPart(key, uploadId, partNumber, chunk, start, totalSize, bar, status) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', `/api/mpu-part?key=${encodeURIComponent(key)}&uploadId=${encodeURIComponent(uploadId)}&partNumber=${partNumber}`);
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable && bar) {
+            const loaded = start + e.loaded;
+            const pct = Math.min(100, Math.round((loaded / totalSize) * 100));
+            bar.style.width = pct + '%';
+            if (status) status.textContent = pct + '%';
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText));
+          else reject(new Error('Upload fehlgeschlagen: ' + xhr.status));
+        };
+        xhr.onerror = () => reject(new Error('Netzwerkfehler'));
+        xhr.ontimeout = () => reject(new Error('Zeitüberschreitung'));
+        xhr.send(chunk);
+      });
+    }
 
     async function multipartUpload(file, bar, status) {
       const createRes = await fetch('/api/mpu-create', {
@@ -809,26 +835,20 @@
         const start = i * CHUNK_SIZE;
         const chunk = file.slice(start, Math.min(start + CHUNK_SIZE, file.size));
 
-        const part = await new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.open('PUT', `/api/mpu-part?key=${encodeURIComponent(key)}&uploadId=${encodeURIComponent(uploadId)}&partNumber=${partNumber}`);
-
-          xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable && bar) {
-              const loaded = start + e.loaded;
-              const pct = Math.min(100, Math.round((loaded / file.size) * 100));
-              bar.style.width = pct + '%';
-              if (status) status.textContent = pct + '%';
-            }
-          };
-
-          xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText));
-            else reject(new Error('Upload fehlgeschlagen: ' + xhr.status));
-          };
-          xhr.onerror = () => reject(new Error('Netzwerkfehler'));
-          xhr.send(chunk);
-        });
+        // Retry each chunk a few times so a single transient network blip
+        // doesn't throw away the whole upload.
+        let part, lastErr;
+        for (let attempt = 0; attempt < MAX_PART_RETRIES; attempt++) {
+          try {
+            part = await uploadPart(key, uploadId, partNumber, chunk, start, file.size, bar, status);
+            break;
+          } catch (err) {
+            lastErr = err;
+            if (status) status.textContent = `Wiederhole Teil ${partNumber}…`;
+            await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+          }
+        }
+        if (!part) throw lastErr || new Error('Netzwerkfehler');
 
         parts.push({ partNumber: part.partNumber, etag: part.etag });
       }
